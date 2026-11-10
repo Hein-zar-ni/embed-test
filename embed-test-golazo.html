@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Embed test v2 - Golazo HLS</title></head><body style="margin:0;background:#111;color:#fff;font-family:sans-serif;">
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Embed test v3 - Golazo HLS (hls.js first)</title></head><body style="margin:0;background:#111;color:#fff;font-family:sans-serif;">
 <div style="width:100%;max-width:100%;position:relative;aspect-ratio:16/9;background:#000;overflow:hidden;">
   <video id="hls-video" controls autoplay muted playsinline style="width:100%;height:100%;object-fit:contain;"></video>
   <button id="sound-button" type="button" style="position:absolute;bottom:15px;left:50%;transform:translateX(-50%);z-index:10;padding:10px 16px;background:rgba(0,0,0,.8);color:white;border:0;border-radius:6px;cursor:pointer;">🔊 Tap to Unmute</button>
 </div>
-<p id="status" style="padding:12px;font-size:15px;line-height:1.5;">⏳ Loading Golazo… (if this stays here, the stream did not start — screenshot this line)</p>
+<p id="status" style="padding:12px;font-size:15px;line-height:1.5;">⏳ Loading Golazo via hls.js… (if this stays here, the stream did not start — screenshot this line)</p>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
 <script>
 (function () {
@@ -20,11 +20,7 @@
   });
   video.addEventListener("playing", function () { setStatus("✅ PLAYING — Golazo is live (muted). Tap 🔊 for sound."); });
   video.addEventListener("waiting", function () { setStatus("⏳ Buffering…"); });
-  if (video.canPlayType("application/vnd.apple.mpegurl")) {
-    setStatus("Native HLS — loading…");
-    video.src = SOURCE;
-    video.play().catch(function (e) { setStatus("❌ Native play failed: " + e.message); });
-  } else if (window.Hls && Hls.isSupported()) {
+  if (window.Hls && Hls.isSupported()) {
     var hls = new Hls({ enableWorker: true });
     hls.loadSource(SOURCE);
     hls.attachMedia(video);
@@ -40,6 +36,10 @@
         else { hls.destroy(); }
       }
     });
+  } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    setStatus("Native HLS (Safari fallback) — loading…");
+    video.src = SOURCE;
+    video.play().catch(function (e) { setStatus("❌ Native play failed: " + e.message); });
   } else {
     setStatus("❌ This browser does not support HLS playback.");
   }
