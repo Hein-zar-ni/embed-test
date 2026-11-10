@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Embed test - Golazo HLS</title></head><body style="margin:0;background:#111;"><div id="video-player" style="width:100%;max-width:100%;position:relative;aspect-ratio:16/9;background:#000;overflow:hidden;">
+  <video
+    id="hls-video"
+    controls
+    autoplay
+    muted
+    playsinline
+    style="width:100%;height:100%;object-fit:contain;display:none;"
+  ></video>
+
+  <iframe
+    id="youtube-video"
+    title="YouTube video player"
+    style="width:100%;height:100%;border:0;display:none;"
+    allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+    allowfullscreen
+    referrerpolicy="strict-origin-when-cross-origin"
+  ></iframe>
+
+  <button
+    id="sound-button"
+    type="button"
+    style="position:absolute;bottom:15px;left:50%;transform:translateX(-50%);z-index:10;padding:10px 16px;background:rgba(0,0,0,.8);color:white;border:0;border-radius:6px;cursor:pointer;"
+  >
+    🔊 Tap to Unmute
+  </button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+<script>
+(() => {
+  // ==========================================
+  // CHANGE THIS SOURCE VARIABLE ONLY
+  // Accepts:
+  // 1. HLS: https://example.com/live/stream.m3u8
+  // 2. YouTube: https://www.youtube.com/watch?v=VIDEO_ID
+  // 3. YouTube: https://youtu.be/VIDEO_ID
+  // 4. YouTube: VIDEO_ID
+  // ==========================================
+
+  const VIDEO_SOURCE = "https://dai.google.com/linear/hls/event/7f3Wv6f7QEKfQna22jHqLQ/master.m3u8";
+
+  // ==========================================
+
+  const video = document.getElementById("hls-video");
+  const iframe = document.getElementById("youtube-video");
+  const button = document.getElementById("sound-button");
+
+  let hlsInstance = null;
+  let playerType = null;
+  let youtubeReady = false;
+  let youtubePlayer = null;
+
+  function getYouTubeId(source) {
+    const value = source.trim();
+
+    if (/^[a-zA-Z0-9_-]{11}$/.test(value)) {
+      return value;
+    }
+
+    try {
+      const url = new URL(value);
+      let id = "";
+
+      if (url.hostname === "youtu.be" || url.hostname.endsWith(".youtu.be")) {
+        id = url.pathname.split("/").filter(Boolean)[0] || "";
+      } else if (
+        url.hostname === "youtube.com" ||
+        url.hostname.endsWith(".youtube.com")
+      ) {
+        if (url.pathname === "/watch") {
+          id = url.searchParams.get("v") || "";
+        } else {
+          const match = url.pathname.match(/^\/(?:embed|shorts|live)\/([^/?]+)/);
+          id = match ? match[1] : "";
+        }
+      }
+
+      return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function hideButton() {
+    button.style.display = "none";
+  }
+
+  function showButton() {
+    button.style.display = "block";
+  }
+
+  function playHLS(source) {
+    playerType = "hls";
+    video.style.display = "block";
+    iframe.style.display = "none";
+
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      // Native HLS playback (Safari / iOS)
+      video.src = source;
+      video.play().catch(() => {});
+    } else if (window.Hls && Hls.isSupported()) {
+      // HLS.js playback
+      hlsInstance = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true
+      });
+
+      hlsInstance.loadSource(source);
+      hlsInstance.attachMedia(video);
+
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().catch(() => {});
+      });
+
+      hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+        if (data.fatal) {
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            hlsInstance.startLoad();
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            hlsInstance.recoverMediaError();
+          } else {
+            hlsInstance.destroy();
+            hlsInstance = null;
+          }
+        }
+      });
+    } else {
+      console.error("This browser does not support HLS playback.");
+      button.textContent = "HLS not supported";
+      return;
+    }
+
+    showButton();
+  }
+
+  function playYouTube(videoId) {
+    playerType = "youtube";
+    video.style.display = "none";
+    iframe.style.display = "block";
+
+    const params = new URLSearchParams({
+      autoplay: "1",
+      mute: "1",
+      playsinline: "1",
+      controls: "1",
+      enablejsapi: "1",
+      rel: "0",
+      origin: window.location.origin
+    });
+
+    iframe.src =
+      "https://www.youtube-nocookie.com/embed/" +
+      encodeURIComponent(videoId) +
+      "?" + params.toString();
+
+    showButton();
+  }
+
+  button.addEventListener("click", () => {
+    if (playerType === "hls") {
+      video.muted = false;
+      video.volume = 1;
+
+      video.play().catch(() => {});
+      hideButton();
+
+    } else if (playerType === "youtube") {
+      if (youtubePlayer && youtubeReady) {
+        youtubePlayer.unMute();
+        youtubePlayer.setVolume(100);
+        youtubePlayer.playVideo();
+        hideButton();
+      } else {
+        // Sound will be enabled after the iframe API becomes ready.
+        button.textContent = "Tap again when YouTube loads";
+      }
+    }
+  });
+
+  video.addEventListener("volumechange", () => {
+    if (!video.muted && video.volume > 0) {
+      hideButton();
+    } else {
+      showButton();
+    }
+  });
+
+  // Automatically detect source type.
+  const source = VIDEO_SOURCE.trim();
+
+  if (/\.m3u8(?:$|[?#])/i.test(source)) {
+    playHLS(source);
+  } else {
+    const youtubeId = getYouTubeId(source);
+
+    if (youtubeId) {
+      playYouTube(youtubeId);
+    } else {
+      console.error("Invalid video source. Provide an HLS URL or YouTube URL/ID.");
+      button.textContent = "Invalid video source";
+    }
+  }
+
+  // Load YouTube iframe API only for YouTube sources.
+  if (playerType === "youtube") {
+    const script = document.createElement("script");
+    script.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(script);
+
+    window.onYouTubeIframeAPIReady = function () {
+      youtubePlayer = new YT.Player("youtube-video", {
+        events: {
+          onReady: function () {
+            youtubeReady = true;
+            youtubePlayer.mute();
+            youtubePlayer.playVideo();
+          },
+          onStateChange: function (event) {
+            if (event.data === YT.PlayerState.PLAYING) {
+              showButton();
+            }
+          }
+        }
+      });
+    };
+  }
+})();
+</script>
+</body></html>
